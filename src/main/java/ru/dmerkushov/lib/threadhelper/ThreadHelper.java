@@ -35,6 +35,12 @@ public class ThreadHelper {
 		thRunnables.add (thRunnable);
 	}
 
+	public synchronized AbstractTHRunnable addRunnable (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
+		AbstractTHRunnable thRunnable = getRunnableInstance (clazz);
+		addRunnable (thRunnable);
+		return thRunnable;
+	}
+
 	public synchronized void removeRunnable (THRunnable thRunnable) {
 		thRunnables.remove (thRunnable);
 	}
@@ -49,7 +55,7 @@ public class ThreadHelper {
 		}
 	}
 
-	public AbstractTHRunnable getRunnableInstance (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
+	private AbstractTHRunnable getRunnableInstance (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
 		AbstractTHRunnable newInstance;
 
 		Method getInstanceMethod = null;
