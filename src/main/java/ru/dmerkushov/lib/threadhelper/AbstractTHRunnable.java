@@ -5,8 +5,6 @@
  */
 package ru.dmerkushov.lib.threadhelper;
 
-import java.util.UUID;
-
 /**
  *
  * @author dmerkushov
@@ -15,36 +13,67 @@ public abstract class AbstractTHRunnable implements THRunnable {
 
 	Thread thread;
 	String threadName;
-	private boolean running = false;
+	private Boolean running = false;
+	private Boolean finished = false;
+	private final Integer lock = 0;
 
 	public AbstractTHRunnable (String threadName) {
 		if (threadName == null) {
-			throw new NullPointerException ("threadName");
+			this.threadName = this.getClass ().getSimpleName ();
+		} else {
+			this.threadName = threadName;
 		}
-		this.threadName = threadName;
 	}
 
 	public AbstractTHRunnable () {
-		this (UUID.randomUUID ().toString ());
+		this (null);
 	}
 
 	@Override
-	public final void start () {
+	public final void start () throws ThreadHelperException {
+		synchronized (lock) {
+			if (isRunning ()) {
+				throw new ThreadHelperException ("Already running");
+			}
+			if (isFinished ()) {
+				throw new ThreadHelperException ("Already finished");
+			}
+		}
 		thread = new Thread (this);
-		thread.setName (threadName);
+		thread.setName (getThreadName ());
 		thread.start ();
 	}
 
 	@Override
 	public final void run () {
-		running = true;
+		synchronized (lock) {
+			running = true;
+		}
+
 		doSomething ();
-		running = false;
+
+		synchronized (lock) {
+			running = false;
+			finished = true;
+		}
 	}
 
 	@Override
 	public final boolean isRunning () {
-		return running;
+		Boolean result;
+		synchronized (lock) {
+			result = running;
+		}
+		return result;
+	}
+
+	@Override
+	public final boolean isFinished () {
+		Boolean result;
+		synchronized (lock) {
+			result = finished;
+		}
+		return result;
 	}
 
 	/**
@@ -52,6 +81,7 @@ public abstract class AbstractTHRunnable implements THRunnable {
 	 *
 	 * @return
 	 */
+	@Override
 	public final String getThreadName () {
 		return threadName;
 	}

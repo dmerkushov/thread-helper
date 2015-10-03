@@ -45,7 +45,7 @@ public class ThreadHelper {
 		thRunnables.remove (thRunnable);
 	}
 
-	public synchronized void finish () {
+	public synchronized void finish () throws ThreadHelperException {
 		for (THRunnable thRunnable : thRunnables) {
 			thRunnable.finish ();
 		}
