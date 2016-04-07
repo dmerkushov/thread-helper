@@ -5,17 +5,40 @@
  */
 package ru.dmerkushov.lib.threadhelper;
 
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
+
 /**
  *
  * @author dmerkushov
  */
 public abstract class AbstractTHRunnable implements THRunnable {
 
+	/**
+	 * The thread itself
+	 */
 	Thread thread;
+	/**
+	 * Thread name
+	 */
 	String threadName;
+	/**
+	 * True only if this thread is running right now
+	 */
 	private Boolean running = false;
+	/**
+	 * True only if this thread had worked and finished
+	 */
 	private Boolean finished = false;
-	private final Integer lock = 0;
+	/**
+	 * Read lock for the status information
+	 */
+	private ReadLock statusR;
+	/**
+	 * Write lock for the status information
+	 */
+	private WriteLock statusW;
 
 	public AbstractTHRunnable (String threadName) {
 		if (threadName == null) {
@@ -23,6 +46,10 @@ public abstract class AbstractTHRunnable implements THRunnable {
 		} else {
 			this.threadName = threadName;
 		}
+
+		ReentrantReadWriteLock statusRrwl = new ReentrantReadWriteLock ();
+		statusR = statusRrwl.readLock ();
+		statusW = statusRrwl.writeLock ();
 	}
 
 	public AbstractTHRunnable () {
@@ -31,49 +58,92 @@ public abstract class AbstractTHRunnable implements THRunnable {
 
 	@Override
 	public final void start () throws ThreadHelperException {
-		synchronized (lock) {
+
+		System.err.println ("ThreadHelper library: " + this.getThreadName () + " - start() called");
+
+		statusR.lock ();
+		try {
 			if (isRunning ()) {
 				throw new ThreadHelperException ("Already running");
 			}
 			if (isFinished ()) {
 				throw new ThreadHelperException ("Already finished");
 			}
+		} finally {
+			statusR.unlock ();
 		}
+
 		thread = new Thread (this);
+		thread.setDaemon (true);
 		thread.setName (getThreadName ());
 		thread.start ();
 	}
 
 	@Override
 	public final void run () {
-		synchronized (lock) {
+		statusW.lock ();
+		try {
 			running = true;
+		} finally {
+			statusW.unlock ();
 		}
 
 		doSomething ();
 
-		synchronized (lock) {
+		statusW.lock ();
+		try {
 			running = false;
 			finished = true;
+		} finally {
+			statusW.unlock ();
 		}
 	}
 
 	@Override
 	public final boolean isRunning () {
-		Boolean result;
-		synchronized (lock) {
-			result = running;
+		Boolean localRunning;
+		statusR.lock ();
+		try {
+			localRunning = running || (thread != null && thread.isAlive ());
+		} finally {
+			statusR.unlock ();
 		}
-		return result;
+
+		return localRunning;
 	}
 
 	@Override
 	public final boolean isFinished () {
-		Boolean result;
-		synchronized (lock) {
-			result = finished;
+		Boolean localFinished;
+		statusR.lock ();
+		try {
+			localFinished = finished;
+		} finally {
+			statusR.unlock ();
 		}
-		return result;
+		return localFinished;
+	}
+
+	/**
+	 * Tests whether this instance's thread has been interrupted. The
+	 * <i>interrupted status</i> of the thread is unaffected by this method.
+	 *
+	 * <p>
+	 * A thread interruption ignored because a thread was not alive at the time
+	 * of the interrupt will be reflected by this method returning false.
+	 *
+	 * @return  <code>true</code> if this thread has been interrupted;
+	 * <code>false</code> otherwise.
+	 */
+	public final boolean isInterrupted () {
+		Boolean localInterrupted;
+		statusR.lock ();
+		try {
+			localInterrupted = thread.isInterrupted ();
+		} finally {
+			statusR.unlock ();
+		}
+		return localInterrupted;
 	}
 
 	/**
@@ -82,8 +152,29 @@ public abstract class AbstractTHRunnable implements THRunnable {
 	 * @return
 	 */
 	@Override
-	public final String getThreadName () {
+	public String getThreadName () {
 		return threadName;
+	}
+
+	@Override
+	public String toString () {
+		boolean localRunning;
+		boolean localFinished;
+		statusR.lock ();
+		try {
+			localRunning = running;
+			localFinished = finished;
+		} finally {
+			statusR.unlock ();
+		}
+
+		StringBuilder sb = new StringBuilder ();
+		sb.append (getClass ().getName ());
+		sb.append (" -> ").append (AbstractTHRunnable.class.getName ()).append (" {threadName=\"").append (threadName)
+				.append ("\", hashCode=").append (Integer.toHexString (hashCode ()))
+				.append (", running=").append (localRunning)
+				.append (", finished=").append (localFinished).append ("}");
+		return sb.toString ();
 	}
 
 	/**

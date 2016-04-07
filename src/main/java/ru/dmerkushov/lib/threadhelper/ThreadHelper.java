@@ -8,6 +8,8 @@ package ru.dmerkushov.lib.threadhelper;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.Timer;
+import java.util.TimerTask;
 import ru.dmerkushov.lib.threadhelper.collections.ConcurrentLinkedSet;
 
 /**
@@ -45,14 +47,62 @@ public class ThreadHelper {
 		thRunnables.remove (thRunnable);
 	}
 
-	public synchronized void finish () throws ThreadHelperException {
-		for (THRunnable thRunnable : thRunnables) {
-			thRunnable.finish ();
-		}
-		for (THRunnable thRunnable : thRunnables) {
-			while (thRunnable.isRunning ()) {
+	public synchronized void finish (final long timeout) throws ThreadHelperException {
+		Runnable finishRunnable = new Runnable () {
+
+			@Override
+			public void run () {
+				THRunnable[] thRunnablesArray = thRunnables.toArray (new THRunnable[0]);
+
+				final Timer timer = new Timer ();
+
+				for (final THRunnable thRunnable : thRunnablesArray) {
+					try {
+						thRunnable.finish ();
+						System.err.println ("ThreadHelper library: " + thRunnable.getThreadName () + " - finish() called with timeout: " + timeout + " millis");
+					} catch (ThreadHelperException ex) {
+						ex.printStackTrace (System.err);
+					}
+
+					if (timeout > 0l) {
+						TimerTask timerTask = new TimerTask () {
+
+							@Override
+							public void run () {
+								boolean running;
+								try {
+									running = thRunnable.isRunning ();
+								} catch (ThreadHelperException ex) {
+									ex.printStackTrace (System.err);
+									return;
+								}
+								if (running) {
+									String threadName = null;
+									try {
+										threadName = thRunnable.getThreadName ();
+									} catch (ThreadHelperException ex) {
+										ex.printStackTrace (System.err);
+									}
+									System.err.println ("ThreadHelper library: WARNING: THRunnable not finished: " + thRunnable.toString () + ", thread name (may be null in case of error): " + threadName + ", timeout expired: " + timeout + " millis");
+								}
+							}
+
+						};
+
+						timer.schedule (timerTask, timeout);
+					}
+
+				}
 			}
-		}
+		};
+
+		Thread finishThread = new Thread (finishRunnable);
+		finishThread.setName ("THREADHELPER_FINISHER");
+		finishThread.start ();
+	}
+
+	public synchronized void finish () throws ThreadHelperException {
+		finish (0);
 	}
 
 	private AbstractTHRunnable getRunnableInstance (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
@@ -62,18 +112,22 @@ public class ThreadHelper {
 		try {
 			getInstanceMethod = clazz.getMethod ("getInstance");
 		} catch (NoSuchMethodException ex) {
-
+			// Do nothing, as we may call a constructor later
 		} catch (SecurityException ex) {
 			throw new ThreadHelperException (ex);
 		}
 
+		if (getInstanceMethod.getParameterTypes ().length > 0) {
+			getInstanceMethod = null;
+		}
+
 		if (getInstanceMethod != null) {
 			if (!Modifier.isStatic (getInstanceMethod.getModifiers ())) {
-				throw new ThreadHelperException ("Method getInstance () is not static");
+				throw new ThreadHelperException ("Method getInstance () of class " + clazz.getCanonicalName () + " is not static");
 			}
 
 			try {
-				newInstance = (AbstractTHRunnable) getInstanceMethod.invoke (null, null);
+				newInstance = (AbstractTHRunnable) getInstanceMethod.invoke (null, new Object[0]);
 			} catch (IllegalAccessException ex) {
 				throw new ThreadHelperException (ex);
 			} catch (IllegalArgumentException ex) {
