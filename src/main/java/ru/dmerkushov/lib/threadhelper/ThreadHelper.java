@@ -34,10 +34,18 @@ public class ThreadHelper {
 	}
 
 	public synchronized void addRunnable (THRunnable thRunnable) {
+		if (thRunnable == null) {
+			throw new IllegalArgumentException ("thRunnable is null");
+		}
+
 		thRunnables.add (thRunnable);
 	}
 
 	public synchronized AbstractTHRunnable addRunnable (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
+		if (clazz == null) {
+			throw new IllegalArgumentException ("clazz is null");
+		}
+
 		AbstractTHRunnable thRunnable = getRunnableInstance (clazz);
 		addRunnable (thRunnable);
 		return thRunnable;
