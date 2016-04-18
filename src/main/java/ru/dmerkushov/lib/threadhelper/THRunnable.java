@@ -15,7 +15,8 @@ package ru.dmerkushov.lib.threadhelper;
 public interface THRunnable extends Runnable {
 
 	/**
-	 * Get the name for this thread. This method should be thread-safe.
+	 * Get the name for this thread. This method should be thread-safe and
+	 * always return.
 	 *
 	 * @return
 	 * @throws ThreadHelperException

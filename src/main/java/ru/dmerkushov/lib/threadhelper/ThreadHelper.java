@@ -8,9 +8,11 @@ package ru.dmerkushov.lib.threadhelper;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
-import ru.dmerkushov.lib.threadhelper.collections.ConcurrentLinkedSet;
 
 /**
  *
@@ -18,7 +20,9 @@ import ru.dmerkushov.lib.threadhelper.collections.ConcurrentLinkedSet;
  */
 public class ThreadHelper {
 
-	ConcurrentLinkedSet<THRunnable> thRunnables;
+	LinkedHashMap<String, Set<THRunnable>> thRunnables;
+
+	public static final String DEFAULT_GROUP_NAME = "default";
 
 	static ThreadHelper instance;
 
@@ -30,47 +34,110 @@ public class ThreadHelper {
 	}
 
 	private ThreadHelper () {
-		thRunnables = new ConcurrentLinkedSet<THRunnable> ();
+		thRunnables = new LinkedHashMap<String, Set<THRunnable>> ();
+		thRunnables.put (DEFAULT_GROUP_NAME, new HashSet<THRunnable> ());
 	}
 
 	public synchronized void addRunnable (THRunnable thRunnable) {
+		addRunnable (DEFAULT_GROUP_NAME, thRunnable);
+	}
+
+	public synchronized void addRunnable (String groupName, THRunnable thRunnable) {
+		if (groupName == null) {
+			throw new IllegalArgumentException ("groupName is null");
+		}
 		if (thRunnable == null) {
 			throw new IllegalArgumentException ("thRunnable is null");
 		}
 
-		thRunnables.add (thRunnable);
+		if (!thRunnables.containsKey (groupName)) {
+			thRunnables.put (groupName, new HashSet<THRunnable> ());
+		}
+
+		thRunnables.get (groupName).add (thRunnable);
 	}
 
 	public synchronized AbstractTHRunnable addRunnable (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
+		return addRunnable (DEFAULT_GROUP_NAME, clazz);
+	}
+
+	public synchronized AbstractTHRunnable addRunnable (String groupName, Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
+		if (groupName == null) {
+			throw new IllegalArgumentException ("groupName is null");
+		}
 		if (clazz == null) {
 			throw new IllegalArgumentException ("clazz is null");
 		}
 
 		AbstractTHRunnable thRunnable = getRunnableInstance (clazz);
-		addRunnable (thRunnable);
+		addRunnable (groupName, thRunnable);
 		return thRunnable;
 	}
 
-	public synchronized void removeRunnable (THRunnable thRunnable) {
-		thRunnables.remove (thRunnable);
+	public synchronized void removeRunnable (THRunnable thRunnable) throws ThreadHelperException {
+		removeRunnable (DEFAULT_GROUP_NAME, thRunnable);
+	}
+
+	public synchronized void removeRunnable (String groupName, THRunnable thRunnable) throws ThreadHelperException {
+		if (groupName == null) {
+			throw new IllegalArgumentException ("groupName is null");
+		}
+		if (thRunnable == null) {
+			throw new IllegalArgumentException ("thRunnable is null");
+		}
+
+		if (!thRunnables.containsKey (groupName)) {
+			throw new ThreadHelperException ("No such group: " + groupName);
+		}
+
+		thRunnables.get (groupName).remove (thRunnable);
+	}
+
+	public synchronized void finish () throws ThreadHelperException {
+		finish (0);
 	}
 
 	public synchronized void finish (final long timeout) throws ThreadHelperException {
+		finish (DEFAULT_GROUP_NAME, timeout);
+	}
+
+	public synchronized void finish (final String groupName, final long timeout) throws ThreadHelperException {
+		if (groupName == null) {
+			throw new IllegalArgumentException ("groupName is null");
+		}
+
 		Runnable finishRunnable = new Runnable () {
 
 			@Override
 			public void run () {
-				THRunnable[] thRunnablesArray = thRunnables.toArray (new THRunnable[0]);
+				THRunnable[] thRunnablesArray = thRunnables.get (groupName).toArray (new THRunnable[0]);
 
 				final Timer timer = new Timer ();
 
 				for (final THRunnable thRunnable : thRunnablesArray) {
+					Thread finishT = new Thread (new Runnable () {
+
+						@Override
+						public void run () {
+							try {
+								thRunnable.finish ();
+							} catch (ThreadHelperException ex) {
+								ex.printStackTrace (System.err);
+							}
+						}
+					});
+					String threadName = "";
 					try {
-						thRunnable.finish ();
-						System.err.println ("ThreadHelper library: " + thRunnable.getThreadName () + " - finish() called with timeout: " + timeout + " millis");
+						threadName = thRunnable.getThreadName ();
 					} catch (ThreadHelperException ex) {
+						System.err.println ("ThreadHelper library: WARNING: Could not get THRunnable's name. Will use the default: UNNAMED_THRUNNABLE");
 						ex.printStackTrace (System.err);
+						threadName = "UNNAMED_THRUNNABLE";
 					}
+					finishT.setName ("THREADHELPER_" + threadName + "_FINISHER");
+					finishT.start ();
+
+					System.err.println ("ThreadHelper library: " + threadName + " - finish() called with timeout: " + timeout + " millis on group: " + groupName);
 
 					if (timeout > 0l) {
 						TimerTask timerTask = new TimerTask () {
@@ -91,7 +158,7 @@ public class ThreadHelper {
 									} catch (ThreadHelperException ex) {
 										ex.printStackTrace (System.err);
 									}
-									System.err.println ("ThreadHelper library: WARNING: THRunnable not finished: " + thRunnable.toString () + ", thread name (may be null in case of error): " + threadName + ", timeout expired: " + timeout + " millis");
+									System.err.println ("ThreadHelper library: WARNING: THRunnable not finished: " + thRunnable.toString () + ", thread name (may be null in case of error): " + threadName + ", timeout expired: " + timeout + " millis, group: " + groupName);
 								}
 							}
 
@@ -105,12 +172,8 @@ public class ThreadHelper {
 		};
 
 		Thread finishThread = new Thread (finishRunnable);
-		finishThread.setName ("THREADHELPER_FINISHER");
+		finishThread.setName ("THREADHELPER_GLOBAL_FINISHER");
 		finishThread.start ();
-	}
-
-	public synchronized void finish () throws ThreadHelperException {
-		finish (0);
 	}
 
 	private AbstractTHRunnable getRunnableInstance (Class<? extends AbstractTHRunnable> clazz) throws ThreadHelperException {
