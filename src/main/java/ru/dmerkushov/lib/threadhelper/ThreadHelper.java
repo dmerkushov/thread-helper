@@ -117,7 +117,7 @@ public class ThreadHelper {
 			throw new ThreadHelperException (ex);
 		}
 
-		if (getInstanceMethod.getParameterTypes ().length > 0) {
+		if (getInstanceMethod != null && getInstanceMethod.getParameterTypes ().length > 0) {
 			getInstanceMethod = null;
 		}
 
