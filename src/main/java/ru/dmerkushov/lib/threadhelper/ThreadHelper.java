@@ -26,6 +26,8 @@ public class ThreadHelper {
 
 	static ThreadHelper instance;
 
+	final Timer finishTimer = new Timer ();
+
 	public static synchronized ThreadHelper getInstance () {
 		if (instance == null) {
 			instance = new ThreadHelper ();
@@ -112,8 +114,6 @@ public class ThreadHelper {
 			public void run () {
 				THRunnable[] thRunnablesArray = thRunnables.get (groupName).toArray (new THRunnable[0]);
 
-				final Timer timer = new Timer ();
-
 				for (final THRunnable thRunnable : thRunnablesArray) {
 					Thread finishT = new Thread (new Runnable () {
 
@@ -164,9 +164,18 @@ public class ThreadHelper {
 
 						};
 
-						timer.schedule (timerTask, timeout);
+						finishTimer.schedule (timerTask, timeout);
 					}
 
+				}
+
+				if (timeout > 0l) {
+					try {
+						Thread.sleep (timeout * 2);
+					} catch (InterruptedException ex) {
+					}
+
+					finishTimer.cancel ();
 				}
 			}
 		};
