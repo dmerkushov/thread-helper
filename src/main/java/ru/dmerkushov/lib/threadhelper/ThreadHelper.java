@@ -26,8 +26,6 @@ public class ThreadHelper {
 
 	static ThreadHelper instance;
 
-	final Timer finishTimer = new Timer ();
-
 	public static synchronized ThreadHelper getInstance () {
 		if (instance == null) {
 			instance = new ThreadHelper ();
@@ -107,6 +105,8 @@ public class ThreadHelper {
 		if (groupName == null) {
 			throw new IllegalArgumentException ("groupName is null");
 		}
+
+		final Timer finishTimer = new Timer ();
 
 		Runnable finishRunnable = new Runnable () {
 
